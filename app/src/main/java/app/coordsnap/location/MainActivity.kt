@@ -123,6 +123,7 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
     val context = LocalContext.current
     var selectedFormat by remember { mutableStateOf(CoordinateFormat.BOTH) }
     var expanded by remember { mutableStateOf(false) }
+    var locationName by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Ready") }
     var isLoading by remember { mutableStateOf(false) }
@@ -137,6 +138,7 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
                 context = context,
                 fusedLocationClient = fusedLocationClient,
                 selectedFormat = selectedFormat,
+                locationName = locationName,
                 setLoading = { isLoading = it },
                 setStatus = { status = it },
                 setMessage = { message = it }
@@ -164,6 +166,15 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
             text = status,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = locationName,
+            onValueChange = { locationName = it },
+            singleLine = true,
+            label = { Text("Location name / ID") },
+            placeholder = { Text("BH01-PZ") }
         )
 
         ExposedDropdownMenuBox(
@@ -205,6 +216,7 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
                         context = context,
                         fusedLocationClient = fusedLocationClient,
                         selectedFormat = selectedFormat,
+                        locationName = locationName,
                         setLoading = { isLoading = it },
                         setStatus = { status = it },
                         setMessage = { message = it }
@@ -274,6 +286,7 @@ private fun captureLocation(
     context: Context,
     fusedLocationClient: FusedLocationProviderClient,
     selectedFormat: CoordinateFormat,
+    locationName: String,
     setLoading: (Boolean) -> Unit,
     setStatus: (String) -> Unit,
     setMessage: (String) -> Unit
@@ -298,7 +311,7 @@ private fun captureLocation(
             if (location == null) {
                 setStatus("No location fix available")
             } else {
-                val text = formatLocation(location, selectedFormat)
+                val text = formatLocation(location, selectedFormat, locationName)
                 copyToClipboard(context, text)
                 setMessage(text)
                 setStatus("Copied current location")
@@ -311,9 +324,19 @@ private fun captureLocation(
         }
 }
 
-private fun formatLocation(location: Location, selectedFormat: CoordinateFormat): String {
+private fun formatLocation(
+    location: Location,
+    selectedFormat: CoordinateFormat,
+    locationName: String
+): String {
     val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.getDefault()).format(Date())
+    val title = locationName.trim().ifBlank { "Location" }
     val wgs84 = "WGS84: %.8f, %.8f".format(Locale.US, location.latitude, location.longitude)
+    val mapsUrl = "https://www.google.com/maps?q=%.8f,%.8f".format(
+        Locale.US,
+        location.latitude,
+        location.longitude
+    )
     val nztm = latLonToNztm(location.latitude, location.longitude)
     val nztmText = "NZTM2000: E %.3f, N %.3f".format(Locale.US, nztm.easting, nztm.northing)
     val accuracy = if (location.hasAccuracy()) {
@@ -328,12 +351,12 @@ private fun formatLocation(location: Location, selectedFormat: CoordinateFormat)
         CoordinateFormat.BOTH -> "$wgs84\n$nztmText"
     }
 
-    return "Location\n$coordinates\n$accuracy\nCaptured: $timestamp"
+    return "Location: $title\n$coordinates\nMap: $mapsUrl\n$accuracy\nCaptured: $timestamp"
 }
 
 private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("CoordSnap location", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText("CoordSnap location", text))
 }
 
 private fun shareText(context: Context, text: String) {

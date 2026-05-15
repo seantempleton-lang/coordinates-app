@@ -10,7 +10,7 @@ Native Android/Kotlin app that requests precise location, converts coordinates t
 4. The debug APK will usually be created at:
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+%LOCALAPPDATA%\CoordSnapBuild\app\outputs\apk\debug\app-debug.apk
 ```
 
 ## Build from a terminal
