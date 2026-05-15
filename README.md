@@ -13,6 +13,12 @@ Native Android/Kotlin app that requests precise location, converts coordinates t
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## Build from a terminal
+
+```text
+gradlew.bat :app:assembleDebug
+```
+
 ## Notes
 
 - Requires Google Play Services location dependency.
