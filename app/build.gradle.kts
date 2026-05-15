@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.exactlocationclipboard"
+    namespace = "app.coordsnap.location"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.exactlocationclipboard"
+        applicationId = "app.coordsnap.location"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

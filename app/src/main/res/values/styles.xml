@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.ExactLocationClipboard" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.CoordSnap" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:fontFamily">sans</item>

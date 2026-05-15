@@ -1,4 +1,4 @@
-# Exact Location Clipboard
+# CoordSnap
 
 Native Android/Kotlin app that requests precise location, converts coordinates to WGS84 or NZTM2000 / EPSG:2193, copies a ready-to-share text message to the clipboard, and supports Android's share sheet.
 

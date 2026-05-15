@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ExactLocationClipboard"
+rootProject.name = "CoordSnap"
 include(":app")

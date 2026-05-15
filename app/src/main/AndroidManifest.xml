@@ -8,7 +8,7 @@
         android:allowBackup="true"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ExactLocationClipboard">
+        android:theme="@style/Theme.CoordSnap">
 
         <activity
             android:name=".MainActivity"
