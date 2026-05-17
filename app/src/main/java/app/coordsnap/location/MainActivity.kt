@@ -9,19 +9,25 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -39,18 +45,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -127,6 +139,8 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
     var message by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Ready") }
     var isLoading by remember { mutableStateOf(false) }
+    var permissionGranted by remember { mutableStateOf(hasAnyLocationPermission(context)) }
+    var latestLocation by remember { mutableStateOf<Location?>(null) }
 
     fun hasLocationPermission(): Boolean = hasAnyLocationPermission(context)
 
@@ -134,23 +148,39 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions.values.any { it }) {
-            captureLocation(
-                context = context,
-                fusedLocationClient = fusedLocationClient,
-                selectedFormat = selectedFormat,
-                locationName = locationName,
-                setLoading = { isLoading = it },
-                setStatus = { status = it },
-                setMessage = { message = it }
-            )
+            permissionGranted = true
+            status = "Waiting for location accuracy"
         } else {
+            permissionGranted = false
             status = "Location permission denied"
+        }
+    }
+
+    DisposableEffect(permissionGranted) {
+        if (!permissionGranted) {
+            onDispose { }
+        } else {
+            val callback = startLiveLocationUpdates(
+                fusedLocationClient = fusedLocationClient,
+                onLocation = { location ->
+                    latestLocation = location
+                    status = "Live location ready"
+                },
+                onError = { error ->
+                    status = error.localizedMessage ?: "Could not update location"
+                }
+            )
+
+            onDispose {
+                fusedLocationClient.removeLocationUpdates(callback)
+            }
         }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -166,6 +196,11 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
             text = status,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        AccuracyIndicator(
+            location = latestLocation,
+            permissionGranted = permissionGranted
         )
 
         OutlinedTextField(
@@ -212,11 +247,13 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
             enabled = !isLoading,
             onClick = {
                 if (hasLocationPermission()) {
+                    permissionGranted = true
                     captureLocation(
                         context = context,
                         fusedLocationClient = fusedLocationClient,
                         selectedFormat = selectedFormat,
                         locationName = locationName,
+                        latestLocation = latestLocation,
                         setLoading = { isLoading = it },
                         setStatus = { status = it },
                         setMessage = { message = it }
@@ -231,7 +268,7 @@ private fun LocationClipboardScreen(fusedLocationClient: FusedLocationProviderCl
                 }
             }
         ) {
-            Text(if (isLoading) "Getting location..." else "Get location and copy")
+            Text(if (isLoading) "Getting location..." else "Capture")
         }
 
         if (message.isNotBlank()) {
@@ -281,12 +318,113 @@ private fun hasAnyLocationPermission(context: Context): Boolean =
             Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
+@Composable
+private fun AccuracyIndicator(
+    location: Location?,
+    permissionGranted: Boolean
+) {
+    val accuracy = location?.takeIf { it.hasAccuracy() }?.accuracy
+    val accuracyText = when {
+        !permissionGranted -> "Accuracy: enable location"
+        accuracy == null -> "Accuracy: waiting for fix"
+        accuracy < 1f -> "Accuracy: +/- %.2f m".format(Locale.US, accuracy)
+        else -> "Accuracy: +/- %.1f m".format(Locale.US, accuracy)
+    }
+    val indicatorColor = accuracyColor(accuracy)
+    val fillFraction = accuracyFillFraction(accuracy)
+    val shape = RoundedCornerShape(8.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clip(shape)
+            .background(Color(0xFF2C3742))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fillFraction)
+                .background(indicatorColor)
+        )
+        Text(
+            modifier = Modifier.align(Alignment.Center),
+            text = accuracyText,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF101820)
+        )
+    }
+}
+
+@SuppressLint("MissingPermission")
+private fun startLiveLocationUpdates(
+    fusedLocationClient: FusedLocationProviderClient,
+    onLocation: (Location) -> Unit,
+    onError: (Exception) -> Unit
+): LocationCallback {
+    val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000)
+        .setMinUpdateIntervalMillis(500)
+        .setMaxUpdateDelayMillis(1_000)
+        .setWaitForAccurateLocation(true)
+        .build()
+
+    val callback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            result.lastLocation?.let(onLocation)
+        }
+    }
+
+    fusedLocationClient.requestLocationUpdates(
+        request,
+        callback,
+        Looper.getMainLooper()
+    ).addOnFailureListener(onError)
+
+    return callback
+}
+
+private fun accuracyFillFraction(accuracy: Float?): Float {
+    if (accuracy == null) return 0.35f
+    return ((10f - accuracy.coerceIn(1f, 10f)) / 9f)
+        .coerceIn(0f, 1f)
+        .coerceAtLeast(0.12f)
+}
+
+private fun accuracyColor(accuracy: Float?): Color {
+    if (accuracy == null) return Amber
+
+    val red = Color(0xFFE5534B)
+    val yellow = Color(0xFFF4B84A)
+    val green = Color(0xFF45C46A)
+    val clamped = accuracy.coerceIn(1f, 10f)
+
+    return if (clamped <= 5.5f) {
+        val fraction = (5.5f - clamped) / 4.5f
+        interpolateColor(yellow, green, fraction)
+    } else {
+        val fraction = (10f - clamped) / 4.5f
+        interpolateColor(red, yellow, fraction)
+    }
+}
+
+private fun interpolateColor(start: Color, end: Color, fraction: Float): Color {
+    val amount = fraction.coerceIn(0f, 1f)
+    return Color(
+        red = start.red + (end.red - start.red) * amount,
+        green = start.green + (end.green - start.green) * amount,
+        blue = start.blue + (end.blue - start.blue) * amount,
+        alpha = start.alpha + (end.alpha - start.alpha) * amount
+    )
+}
+
 @SuppressLint("MissingPermission")
 private fun captureLocation(
     context: Context,
     fusedLocationClient: FusedLocationProviderClient,
     selectedFormat: CoordinateFormat,
     locationName: String,
+    latestLocation: Location?,
     setLoading: (Boolean) -> Unit,
     setStatus: (String) -> Unit,
     setMessage: (String) -> Unit
@@ -296,12 +434,22 @@ private fun captureLocation(
         return
     }
 
+    if (latestLocation != null) {
+        val text = formatLocation(latestLocation, selectedFormat, locationName)
+        copyToClipboard(context, text)
+        setMessage(text)
+        setStatus("Copied current location")
+        Toast.makeText(context, "Location copied", Toast.LENGTH_SHORT).show()
+        return
+    }
+
     setLoading(true)
     setStatus("Requesting current location")
 
     val request = CurrentLocationRequest.Builder()
         .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
         .setMaxUpdateAgeMillis(5_000)
+        .setGranularity(com.google.android.gms.location.Granularity.GRANULARITY_FINE)
         .build()
 
     val cancellationTokenSource = CancellationTokenSource()
